@@ -1,0 +1,123 @@
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+-- ==========================================
+local BACKEND_URL = "https://your-backend-url.com/servers"
+local MIN_VALUE_THRESHOLD = 300
+
+-- Value lookup table for different egg types
+local EGG_VALUES = {
+    ["Golden Dragon Egg"]   = 1000,
+    ["Mythic Phoenix Egg"]  = 750,
+    ["Celestial Star Egg"]  = 500,
+    ["Void Demon Egg"]      = 300,
+    ["Crystal Egg"]         = 100,
+    ["Common Egg"]          = 5
+}
+-- ==========================================
+
+-- 1. BUILD THE GUI PROGRAMMATICALLY
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "SniperUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = PlayerGui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 260, 0, 180)
+frame.Position = UDim2.new(0, 50, 0, 50)
+frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+frame.BorderSizePixel = 0
+frame.Parent = screenGui
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, 0, 0, 35)
+titleLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 14
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.Text = "Server Sniper GUI"
+titleLabel.Parent = frame
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1, -20, 0, 40)
+statusLabel.Position = UDim2.new(0, 10, 0, 45)
+statusLabel.BackgroundTransparency = 1
+statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+statusLabel.TextSize = 13
+statusLabel.Font = Enum.Font.SourceSans
+statusLabel.Text = "Status: Idle (Ready to Search)"
+statusLabel.TextWrapped = true
+statusLabel.Parent = frame
+
+local searchButton = Instance.new("TextButton")
+searchButton.Size = UDim2.new(1, -20, 0, 40)
+searchButton.Position = UDim2.new(0, 10, 0, 115)
+searchButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+searchButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+searchButton.TextSize = 15
+searchButton.Font = Enum.Font.SourceSansBold
+searchButton.Text = "Scan & Teleport to Best Server"
+searchButton.Parent = frame
+
+-- 2. CORE LOGIC: FETCH, EVALUATE, AND TELEPORT
+local function executeSniperScan()
+    statusLabel.Text = "Status: Requesting server list from app.py..."
+    
+    -- Request the server list from your backend
+    local success, response = pcall(function()
+        return HttpService:GetAsync(BACKEND_URL)
+    end)
+
+    if not success or not response then
+        statusLabel.Text = "Error: Failed to reach backend API."
+        return
+    end
+
+    -- Parse the JSON response returned by Python
+    local decodeSuccess, serverList = pcall(function()
+        return HttpService:JSONDecode(response)
+    end)
+
+    if not decodeSuccess or type(serverList) ~= "table" then
+        statusLabel.Text = "Error: Invalid JSON data received."
+        return
+    end
+
+    statusLabel.Text = string.format("Scanned %d servers. Finding best match...", #serverList)
+
+    -- Evaluate every server using our value dictionary
+    local bestServer = nil
+    local highestValueFound = 0
+
+    for _, server in ipairs(serverList) do
+        local eggName = server.currentEgg
+        local eggValue = EGG_VALUES[eggName] or 0
+        
+        -- Check if this server's egg beats our current record
+        if eggValue > highestValueFound then
+            highestValueFound = eggValue
+            bestServer = server
+        end
+    end
+
+    -- Take action based on the findings
+    if bestServer and highestValueFound >= MIN_VALUE_THRESHOLD then
+        statusLabel.Text = string.format("Found: %s (Val: %d). Teleporting...", bestServer.currentEgg, highestValueFound)
+        
+        task.wait(0.5) -- Short pause so UI updates text before teleporting
+        
+        TeleportService:TeleportToPlaceInstance(
+            game.PlaceId, 
+            bestServer.jobId, 
+            Player
+        )
+    else
+        statusLabel.Text = "Status: No servers met value threshold."
+    end
+end
+
+-- 3. CONNECT THE UI BUTTON TO THE SCRIPT LOGIC
+searchButton.MouseButton1Click:Connect(executeSniperScan)
