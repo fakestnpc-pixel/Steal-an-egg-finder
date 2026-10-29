@@ -1,15 +1,15 @@
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
 local Player = Players.LocalPlayer
-local PlayerGui = Player:WaitForChild("PlayerGui")
 
 -- ==========================================
 local BACKEND_URL = "https://your-backend-url.com/servers"
 
 -- Value lookup table for different egg types
 local EGG_VALUES = {
-    ["Chicken Egg"]   = 5,
+    ["Golden Dragon Egg"]   = 1000,
     ["Mythic Phoenix Egg"]  = 750,
     ["Celestial Star Egg"]  = 500,
     ["Void Demon Egg"]      = 300,
@@ -18,14 +18,20 @@ local EGG_VALUES = {
 }
 -- ==========================================
 
--- 1. BUILD THE GUI PROGRAMMATICALLY
+-- 1. BUILD THE GUI (Parented to CoreGui so it actually appears)
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SniperUI"
 screenGui.ResetOnSpawn = false
-screenGui.Parent = PlayerGui
+-- Use CoreGui for executor scripts so the game doesn't block it
+local successCore, err = pcall(function()
+    screenGui.Parent = CoreGui
+end)
+if not successCore then
+    screenGui.Parent = Player.WaitForChild(Player, "PlayerGui")
+end
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 260, 0, 230) -- Made slightly taller to fit the input box
+frame.Size = UDim2.new(0, 260, 0, 230)
 frame.Position = UDim2.new(0, 50, 0, 50)
 frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 frame.BorderSizePixel = 0
@@ -37,7 +43,7 @@ titleLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 14
 titleLabel.Font = Enum.Font.SourceSansBold
-titleLabel.Text = "Server Sniper GUI (Dynamic Threshold)"
+titleLabel.Text = "Server Sniper GUI"
 titleLabel.Parent = frame
 
 local statusLabel = Instance.new("TextLabel")
@@ -51,20 +57,17 @@ statusLabel.Text = "Status: Idle (Ready to Search)"
 statusLabel.TextWrapped = true
 statusLabel.Parent = frame
 
--- Label for the text box
 local inputLabel = Instance.new("TextLabel")
 inputLabel.Size = UDim2.new(1, -20, 0, 20)
 inputLabel.Position = UDim2.new(0, 10, 0, 85)
 inputLabel.BackgroundTransparency = 1
 inputLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-inputLabel.TextSize: = 12 -- wait, TextSize is a property
-inputLabel.TextSize = 12
+inputLabel.TextSize = 12 -- Typo fixed here (removed the colon)
 inputLabel.Font = Enum.Font.SourceSans
 inputLabel.Text = "Minimum Value Threshold:"
 inputLabel.TextXAlignment = Enum.TextXAlignment.Left
 inputLabel.Parent = frame
 
--- TextBox where the user types their minimum threshold number
 local thresholdBox = Instance.new("TextBox")
 thresholdBox.Size = UDim2.new(1, -20, 0, 30)
 thresholdBox.Position = UDim2.new(0, 10, 0, 105)
@@ -72,7 +75,7 @@ thresholdBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 thresholdBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 thresholdBox.TextSize = 14
 thresholdBox.Font = Enum.Font.SourceSansBold
-thresholdBox.Text = "300" -- Default value
+thresholdBox.Text = "300"
 thresholdBox.ClearTextOnFocus = false
 thresholdBox.Parent = frame
 
@@ -86,14 +89,11 @@ searchButton.Font = Enum.Font.SourceSansBold
 searchButton.Text = "Scan & Teleport to Best Server"
 searchButton.Parent = frame
 
--- 2. CORE LOGIC: FETCH, EVALUATE, AND TELEPORT
+-- 2. CORE LOGIC
 local function executeSniperScan()
-    -- Read whatever number the user typed into the TextBox on the fly
     local userThreshold = tonumber(thresholdBox.Text) or 300
-    
     statusLabel.Text = "Status: Requesting server list from app.py..."
     
-    -- Request the server list from your backend
     local success, response = pcall(function()
         return HttpService:GetAsync(BACKEND_URL)
     end)
@@ -103,7 +103,6 @@ local function executeSniperScan()
         return
     end
 
-    -- Parse the JSON response returned by Python
     local decodeSuccess, serverList = pcall(function()
         return HttpService:JSONDecode(response)
     end)
@@ -115,7 +114,6 @@ local function executeSniperScan()
 
     statusLabel.Text = string.format("Scanned %d servers. Filtering...", #serverList)
 
-    -- Evaluate every server using our value dictionary
     local bestServer = nil
     local highestValueFound = 0
 
@@ -129,10 +127,8 @@ local function executeSniperScan()
         end
     end
 
-    -- Take action based on the findings, comparing against the user's live input
     if bestServer and highestValueFound >= userThreshold then
         statusLabel.Text = string.format("Found: %s (Val: %d). Teleporting...", bestServer.currentEgg, highestValueFound)
-        
         task.wait(0.5)
         
         TeleportService:TeleportToPlaceInstance(
@@ -141,9 +137,8 @@ local function executeSniperScan()
             Player
         )
     else
-        statusLabel.Text = "Status: No servers met your threshold of " .. tostring(userThreshold)
+        statusLabel.Text = "Status: No servers met your threshold."
     end
 end
 
--- 3. CONNECT THE UI BUTTON TO THE SCRIPT LOGIC
 searchButton.MouseButton1Click:Connect(executeSniperScan)
