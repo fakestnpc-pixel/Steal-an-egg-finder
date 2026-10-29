@@ -9,7 +9,7 @@ local BACKEND_URL = "https://your-backend-url.com/servers"
 
 -- Value lookup table for different egg types
 local EGG_VALUES = {
-    ["Golden Dragon Egg"]   = 1000,
+    ["Chicken Egg"]   = 5,
     ["Mythic Phoenix Egg"]  = 750,
     ["Celestial Star Egg"]  = 500,
     ["Void Demon Egg"]      = 300,
