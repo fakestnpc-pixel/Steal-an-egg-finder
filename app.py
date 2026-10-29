@@ -1,144 +1,92 @@
-local HttpService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
-local Players = game:GetService("Players")
-local CoreGui = game:GetService("CoreGui")
-local Player = Players.LocalPlayer
+from flask import Flask, request, jsonify
+import firebase_admin
+from firebase_admin import credentials, firestore
+import time
+import os
+import json
 
--- ==========================================
-local BACKEND_URL = "https://your-backend-url.com/servers"
+app = Flask(__name__)
 
--- Value lookup table for different egg types
-local EGG_VALUES = {
-    ["Golden Dragon Egg"]   = 1000,
-    ["Mythic Phoenix Egg"]  = 750,
-    ["Celestial Star Egg"]  = 500,
-    ["Void Demon Egg"]      = 300,
-    ["Crystal Egg"]         = 100,
-    ["Common Egg"]          = 5
-}
--- ==========================================
+# Initialize Firebase safely using Render Environment Variables or local JSON
+try:
+    firebase_json = os.environ.get("FIREBASE_CONFIG_JSON")
+    if firebase_json:
+        # Load credentials from Render environment variable
+        cred_dict = json.loads(firebase_json)
+        cred = credentials.Certificate(cred_dict)
+        firebase_admin.initialize_app(cred)
+    elif os.path.exists('serviceAccountKey.json'):
+        # Fallback for local testing if file exists
+        cred = credentials.Certificate('serviceAccountKey.json')
+        firebase_admin.initialize_app(cred)
+    else:
+        print("⚠️ [WARNING] No Firebase credentials found!")
+        
+    db = firestore.client() if firebase_admin._apps else None
+    print("🔥 [FIREBASE] Initialized successfully!")
+except Exception as e:
+    print(f"❌ [FIREBASE ERROR]: {e}")
+    db = None
 
--- 1. BUILD THE GUI (Parented to CoreGui so it actually appears)
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "SniperUI"
-screenGui.ResetOnSpawn = false
-# Use CoreGui for executor scripts so the game doesn't block it
-local successCore, err = pcall(function()
-    screenGui.Parent = CoreGui
-end)
-if not successCore then
-    screenGui.Parent = Player.WaitForChild(Player, "PlayerGui")
-end
-
-local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 260, 0, 230)
-frame.Position = UDim2.new(0, 50, 0, 50)
-frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-frame.BorderSizePixel = 0
-frame.Parent = screenGui
-
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, 0, 0, 35)
-titleLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextSize = 14
-titleLabel.Font = Enum.Font.SourceSansBold
-titleLabel.Text = "Server Sniper GUI"
-titleLabel.Parent = frame
-
-local statusLabel = Instance.new("TextLabel")
-statusLabel.Size = UDim2.new(1, -20, 0, 35)
-statusLabel.Position = UDim2.new(0, 10, 0, 45)
-statusLabel.BackgroundTransparency = 1
-statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-statusLabel.TextSize = 13
-statusLabel.Font = Enum.Font.SourceSans
-statusLabel.Text = "Status: Idle (Ready to Search)"
-statusLabel.TextWrapped = true
-statusLabel.Parent = frame
-
-local inputLabel = Instance.new("TextLabel")
-inputLabel.Size = UDim2.new(1, -20, 0, 20)
-inputLabel.Position = UDim2.new(0, 10, 0, 85)
-inputLabel.BackgroundTransparency = 1
-inputLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-inputLabel.TextSize = 12 -- Typo fixed here (removed the colon)
-inputLabel.Font = Enum.Font.SourceSans
-inputLabel.Text = "Minimum Value Threshold:"
-inputLabel.TextXAlignment = Enum.TextXAlignment.Left
-inputLabel.Parent = frame
-
-local thresholdBox = Instance.new("TextBox")
-thresholdBox.Size = UDim2.new(1, -20, 0, 30)
-thresholdBox.Position = UDim2.new(0, 10, 0, 105)
-thresholdBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-thresholdBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-thresholdBox.TextSize = 14
-thresholdBox.Font = Enum.Font.SourceSansBold
-thresholdBox.Text = "300"
-thresholdBox.ClearTextOnFocus = false
-thresholdBox.Parent = frame
-
-local searchButton = Instance.new("TextButton")
-searchButton.Size = UDim2.new(1, -20, 0, 40)
-searchButton.Position = UDim2.new(0, 10, 0, 155)
-searchButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-searchButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-searchButton.TextSize = 15
-searchButton.Font = Enum.Font.SourceSansBold
-searchButton.Text = "Scan & Teleport to Best Server"
-searchButton.Parent = frame
-
--- 2. CORE LOGIC
-local function executeSniperScan()
-    local userThreshold = tonumber(thresholdBox.Text) or 300
-    statusLabel.Text = "Status: Requesting server list from app.py..."
+# ---------------------------------------------------------
+# ROUTE 1: Receive Telemetry from Roblox Servers (POST)
+# ---------------------------------------------------------
+@app.route('/report', methods=['POST'])
+def report_server():
+    if not db:
+        return jsonify({"error": "Database not initialized"}), 500
+        
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No JSON payload provided"}), 400
+        
+    job_id = data.get('jobId')
+    place_id = data.get('placeId')
+    egg_type = data.get('eggType', 'Unknown Egg')
+    rarity_score = data.get('rarityScore', 0)
+    player_count = data.get('playerCount', 0)
     
-    local success, response = pcall(function()
-        return HttpService:GetAsync(BACKEND_URL)
-    end)
-
-    if not success or not response then
-        statusLabel.Text = "Error: Failed to reach backend API."
-        return
-    end
-
-    local decodeSuccess, serverList = pcall(function()
-        return HttpService:JSONDecode(response)
-    end)
-
-    if not decodeSuccess or type(serverList) ~= "table" then
-        statusLabel.Text = "Error: Invalid JSON data received."
-        return
-    end
-
-    statusLabel.Text = string.format("Scanned %d servers. Filtering...", #serverList)
-
-    local bestServer = nil
-    local highestValueFound = 0
-
-    for _, server in ipairs(serverList) do
-        local eggName = server.currentEgg
-        local eggValue = EGG_VALUES[eggName] or 0
+    if not job_id or not place_id:
+        return jsonify({"error": "Missing jobId or placeId"}), 400
         
-        if eggValue > highestValueFound then
-            highestValueFound = eggValue
-            bestServer = server
-        end
-    end
-
-    if bestServer and highestValueFound >= userThreshold then
-        statusLabel.Text = string.format("Found: %s (Val: %d). Teleporting...", bestServer.currentEgg, highestValueFound)
-        task.wait(0.5)
+    print(f"📥 [REPORT] Game: {place_id} | Server: {job_id} | Egg: {egg_type}")
         
-        TeleportService:TeleportToPlaceInstance(
-            game.PlaceId, 
-            bestServer.jobId, 
-            Player
-        )
-    else
-        statusLabel.Text = "Status: No servers met your threshold."
-    end
-end
+    doc_ref = db.collection('active_servers').document(str(job_id))
+    doc_ref.set({
+        'placeId': place_id,
+        'jobId': job_id,
+        'eggType': egg_type,
+        'rarityScore': rarity_score,
+        'playerCount': player_count,
+        'lastSeen': time.time()
+    })
+    
+    return jsonify({"status": "success"}), 200
 
-searchButton.MouseButton1Click:Connect(executeSniperScan)
+# ---------------------------------------------------------
+# ROUTE 2: Get Active Servers for a Specific Game (GET)
+# ---------------------------------------------------------
+@app.route('/servers/<int:place_id>', methods=['GET'])
+def get_servers(place_id):
+    if not db:
+        return jsonify({"error": "Database not initialized"}), 500
+        
+    docs = db.collection('active_servers').where('placeId', '==', place_id).stream()
+    
+    server_list = []
+    current_time = time.time()
+    
+    for doc in docs:
+        server_data = doc.to_dict()
+        # Only include servers updated within the last 90 seconds
+        if current_time - server_data.get('lastSeen', 0) < 90:
+            server_list.append(server_data)
+            
+    server_list.sort(key=lambda x: x.get('rarityScore', 0), reverse=True)
+    
+    print(f"📤 [GET SERVERS] Returning {len(server_list)} server(s) for Game {place_id}")
+    return jsonify({"servers": server_list}), 200
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
