@@ -6,7 +6,6 @@ local PlayerGui = Player:WaitForChild("PlayerGui")
 
 -- ==========================================
 local BACKEND_URL = "https://your-backend-url.com/servers"
-local MIN_VALUE_THRESHOLD = 300
 
 -- Value lookup table for different egg types
 local EGG_VALUES = {
@@ -26,7 +25,7 @@ screenGui.ResetOnSpawn = false
 screenGui.Parent = PlayerGui
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 260, 0, 180)
+frame.Size = UDim2.new(0, 260, 0, 230) -- Made slightly taller to fit the input box
 frame.Position = UDim2.new(0, 50, 0, 50)
 frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 frame.BorderSizePixel = 0
@@ -38,11 +37,11 @@ titleLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 14
 titleLabel.Font = Enum.Font.SourceSansBold
-titleLabel.Text = "Server Sniper GUI"
+titleLabel.Text = "Server Sniper GUI (Dynamic Threshold)"
 titleLabel.Parent = frame
 
 local statusLabel = Instance.new("TextLabel")
-statusLabel.Size = UDim2.new(1, -20, 0, 40)
+statusLabel.Size = UDim2.new(1, -20, 0, 35)
 statusLabel.Position = UDim2.new(0, 10, 0, 45)
 statusLabel.BackgroundTransparency = 1
 statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -52,9 +51,34 @@ statusLabel.Text = "Status: Idle (Ready to Search)"
 statusLabel.TextWrapped = true
 statusLabel.Parent = frame
 
+-- Label for the text box
+local inputLabel = Instance.new("TextLabel")
+inputLabel.Size = UDim2.new(1, -20, 0, 20)
+inputLabel.Position = UDim2.new(0, 10, 0, 85)
+inputLabel.BackgroundTransparency = 1
+inputLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+inputLabel.TextSize: = 12 -- wait, TextSize is a property
+inputLabel.TextSize = 12
+inputLabel.Font = Enum.Font.SourceSans
+inputLabel.Text = "Minimum Value Threshold:"
+inputLabel.TextXAlignment = Enum.TextXAlignment.Left
+inputLabel.Parent = frame
+
+-- TextBox where the user types their minimum threshold number
+local thresholdBox = Instance.new("TextBox")
+thresholdBox.Size = UDim2.new(1, -20, 0, 30)
+thresholdBox.Position = UDim2.new(0, 10, 0, 105)
+thresholdBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+thresholdBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+thresholdBox.TextSize = 14
+thresholdBox.Font = Enum.Font.SourceSansBold
+thresholdBox.Text = "300" -- Default value
+thresholdBox.ClearTextOnFocus = false
+thresholdBox.Parent = frame
+
 local searchButton = Instance.new("TextButton")
 searchButton.Size = UDim2.new(1, -20, 0, 40)
-searchButton.Position = UDim2.new(0, 10, 0, 115)
+searchButton.Position = UDim2.new(0, 10, 0, 155)
 searchButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
 searchButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 searchButton.TextSize = 15
@@ -64,6 +88,9 @@ searchButton.Parent = frame
 
 -- 2. CORE LOGIC: FETCH, EVALUATE, AND TELEPORT
 local function executeSniperScan()
+    -- Read whatever number the user typed into the TextBox on the fly
+    local userThreshold = tonumber(thresholdBox.Text) or 300
+    
     statusLabel.Text = "Status: Requesting server list from app.py..."
     
     -- Request the server list from your backend
@@ -86,7 +113,7 @@ local function executeSniperScan()
         return
     end
 
-    statusLabel.Text = string.format("Scanned %d servers. Finding best match...", #serverList)
+    statusLabel.Text = string.format("Scanned %d servers. Filtering...", #serverList)
 
     -- Evaluate every server using our value dictionary
     local bestServer = nil
@@ -96,18 +123,17 @@ local function executeSniperScan()
         local eggName = server.currentEgg
         local eggValue = EGG_VALUES[eggName] or 0
         
-        -- Check if this server's egg beats our current record
         if eggValue > highestValueFound then
             highestValueFound = eggValue
             bestServer = server
         end
     end
 
-    -- Take action based on the findings
-    if bestServer and highestValueFound >= MIN_VALUE_THRESHOLD then
+    -- Take action based on the findings, comparing against the user's live input
+    if bestServer and highestValueFound >= userThreshold then
         statusLabel.Text = string.format("Found: %s (Val: %d). Teleporting...", bestServer.currentEgg, highestValueFound)
         
-        task.wait(0.5) -- Short pause so UI updates text before teleporting
+        task.wait(0.5)
         
         TeleportService:TeleportToPlaceInstance(
             game.PlaceId, 
@@ -115,7 +141,7 @@ local function executeSniperScan()
             Player
         )
     else
-        statusLabel.Text = "Status: No servers met value threshold."
+        statusLabel.Text = "Status: No servers met your threshold of " .. tostring(userThreshold)
     end
 end
 
