@@ -22,7 +22,7 @@ local EGG_VALUES = {
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SniperUI"
 screenGui.ResetOnSpawn = false
--- Use CoreGui for executor scripts so the game doesn't block it
+# Use CoreGui for executor scripts so the game doesn't block it
 local successCore, err = pcall(function()
     screenGui.Parent = CoreGui
 end)
